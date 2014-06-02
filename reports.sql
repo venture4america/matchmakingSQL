@@ -1,4 +1,4 @@
-#1. Most recent status change and login Fellows
+#1. Most recent status change and login for Fellows
 SELECT
 'FirstName'
 , 'LastName'
@@ -32,11 +32,7 @@ users.firstName
 , users.lastName
 , users.lastLogin
 ORDER BY
-LastStatusChange ASC) AS a
-INTO OUTFILE '/tmp/Fellow_20140602.csv'
-FIELDS TERMINATED BY ','
-ENCLOSED BY '"'
-LINES TERMINATED BY '\n';
+LastStatusChange ASC) AS a;
 
 #2. Last login for hiring managers
 SELECT
@@ -64,11 +60,7 @@ ON hM.company_id = companies.id
 WHERE
 users.role = 'Hiring Manager'
 ORDER BY
-LastLogin DESC) AS a
-INTO OUTFILE '/tmp/HiringManager_20140602.csv'
-FIELDS TERMINATED BY ','
-ENCLOSED BY '"'
-LINES TERMINATED BY '\n';
+LastLogin DESC) AS a;
 
 #3. On-site completes/pendings in the last week
 SELECT
@@ -126,11 +118,7 @@ WHERE
 pS_Fellow.created_at >= DATE_ADD(CURDATE(), INTERVAL -1 WEEK)
 ORDER BY
 Status DESC
-, Date DESC) AS a
-INTO OUTFILE '/tmp/OnSite_20140602.csv'
-FIELDS TERMINATED BY ','
-ENCLOSED BY '"'
-LINES TERMINATED BY '\n';
+, Date DESC) AS a;
 
 #4. Opportunity history by Fellow
 SELECT
@@ -200,11 +188,7 @@ ON d.user_id = e.id
 ORDER BY
 LastName ASC
 , StatusRank DESC
-, Date DESC) AS a
-INTO OUTFILE '/tmp/FellowOppHistory_20140602.csv'
-FIELDS TERMINATED BY ','
-ENCLOSED BY '"'
-LINES TERMINATED BY '\n';
+, Date DESC) AS a;
 
 #5. Opportunity history by company
 SELECT
@@ -261,8 +245,68 @@ ORDER BY
 City ASC
 , Company ASC
 , Opportunity ASC
-, Date DESC) AS a
-INTO OUTFILE '/tmp/CompanyOppHistory_20140602.csv'
-FIELDS TERMINATED BY ','
-ENCLOSED BY '"'
-LINES TERMINATED BY '\n';
+, Date DESC) AS a;
+
+#6. For Fellows without an offer, most recent status by opportunity/company within the last two weeks
+SELECT
+'FirstName'
+, 'LastName'
+, 'Opportunity'
+, 'Company'
+, 'Status'
+, 'Date'
+UNION ALL
+SELECT 
+a.FirstName
+, a.LastName
+, a.Opportunity
+, a.Company
+, a.Status
+, a.Date
+FROM (
+SELECT
+a.FirstName
+, a.LastName
+, c.title AS Opportunity
+, d.name AS Company
+, b.status AS Status
+, b.created_at AS Date
+FROM (
+SELECT
+users.firstName AS FirstName
+, users.lastName AS LastName
+, users.id AS User_ID
+, fellows.id AS Fellow_ID
+, MAX(CASE
+WHEN pS.status = 'Introduced' THEN 1
+WHEN pS.status = 'Contacted' THEN 2
+WHEN pS.status = 'Phone Interview Pending' THEN 3
+WHEN pS.status = 'Phone Interview Complete' THEN 4
+WHEN pS.status = 'On-site Interview Pending' THEN 5
+WHEN pS.status = 'On-site Interview Complete' THEN 6
+WHEN pS.status = 'Conversation Closed' THEN 7
+WHEN pS.status = 'Offer Extended' THEN 8
+WHEN pS.status = 'Offer Accepted' THEN 9
+ELSE NULL
+END) AS MaxStatusRank
+FROM users
+INNER JOIN fellows
+ON users.id = fellows.user_id
+INNER JOIN placementStatuses AS pS
+ON fellows.id = pS.fellow_id
+GROUP BY
+users.firstName
+, users.lastName) AS a
+INNER JOIN placementStatuses AS b
+ON a.Fellow_ID = b.fellow_id
+INNER JOIN opportunities AS c
+ON b.opportunity_id = c.id
+INNER JOIN companies AS d
+ON c.company_id = d.id
+WHERE
+a.MaxStatusRank NOT IN (8, 9)
+AND b.isRecent = 1
+AND b.created_at >= DATE_ADD(CURDATE(),INTERVAL -2 WEEK)
+ORDER BY 
+a.LastName ASC
+, a.MaxStatusRank ASC) AS a;
